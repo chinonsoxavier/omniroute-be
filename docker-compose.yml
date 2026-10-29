@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnistock-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omnistock
+      POSTGRES_PASSWORD: omnistock
+      POSTGRES_DB: omnistock
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U omnistock -d omnistock']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omnistock
+
+  redis:
+    image: redis:7-alpine
+    container_name: omnistock-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '256mb', '--maxmemory-policy', 'allkeys-lru']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omnistock
+
+  api:
+    build:
+      context: .
+      target: runtime
+    container_name: omnistock-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://omnistock:omnistock@postgres:5432/omnistock?schema=public
+      REDIS_URL: redis://redis:6379
+      REDIS_ENABLED: 'true'
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please-use-openssl-rand-hex-32}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '4000:4000'
+    networks:
+      - omnistock
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  omnistock:
+    driver: bridge

@@ -1,0 +1,384 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STORE_STAFF
+  STORE_MANAGER
+  STORE_DIRECTOR
+}
+
+model Facility {
+  id         String            @id @default(cuid())
+  code       String            @unique
+  name       String
+  address    String?
+  timezone   String            @default("America/Los_Angeles")
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  settings   FacilitySettings?
+  telemetry  ShiftTelemetry?
+  users      User[]
+  products   Product[]
+  suppliers  Supplier[]
+  sales      SaleTransaction[]
+  purchaseOrders PurchaseOrder[]
+  auditLogs  AuditLog[]
+  deadStockAlerts DeadStockAlert[]
+  demandForecasts DemandForecast[]
+  stockMovements StockMovement[]
+
+  @@index([active])
+}
+
+model FacilitySettings {
+  id                   String   @id @default(cuid())
+  facilityId           String   @unique
+  safetyBufferDays     Int      @default(3)
+  posSyncRateSeconds   Int      @default(30)
+  coldChainMinTempF    Float    @default(34)
+  coldChainMaxTempF    Float    @default(40)
+  taxRate              Float    @default(0.08)
+  eslProtocol          String   @default("2.4GHz")
+  eslChannel           String   @default("Auto")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  facility             Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model ShiftTelemetry {
+  id                    String   @id @default(cuid())
+  facilityId            String   @unique
+  shiftNumber           Int      @default(1)
+  activeRegisters       String   @default("0/0")
+  handheldUnitsOnline   String   @default("0/0")
+  telemetryStatus       String   @default("Sync OK")
+  weather               String   @default("N/A")
+  peakFootTraffic       String   @default("N/A")
+  todayTargetSales      Decimal  @default(0) @db.Decimal(14, 2)
+  salesGrowthVsYest     Float    @default(0)
+  coldChainTempAvg      String   @default("N/A")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  facility              Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  fullName      String
+  role          Role     @default(STORE_STAFF)
+  facilityId    String
+  active        Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  facility      Facility @relation(fields: [facilityId], references: [id])
+  refreshTokens RefreshToken[]
+  resetTokens   PasswordResetToken[]
+
+  @@index([facilityId])
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Supplier {
+  id               String   @id @default(cuid())
+  facilityId       String
+  name             String
+  contactPerson    String
+  email            String
+  phone            String
+  category         String[]
+  leadTimeHours    Int      @default(24)
+  reliabilityRating Float   @default(0)
+  paymentTerms     String   @default("Net 30")
+  address          String
+  imageUrl         String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  facility         Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  products         Product[]
+  purchaseOrders   PurchaseOrder[]
+
+  @@index([facilityId])
+  @@index([name])
+}
+
+model Product {
+  id                  String   @id @default(cuid())
+  facilityId          String
+  supplierId          String
+  sku                 String
+  barcode             String
+  name                String
+  brand               String
+  packageType         String
+  department          String
+  aisle               String
+  bay                 String
+  shelfPlacement      String
+  storageTemp         String?
+  unit                String
+
+  retailPrice         Decimal  @db.Decimal(12, 2)
+  wholesaleCost       Decimal  @db.Decimal(12, 2)
+  grossMargin         Float    @default(0)
+  previousRetailPrice Decimal? @db.Decimal(12, 2)
+  discountPercentage  Float?
+
+  currentStock        Decimal  @default(0) @db.Decimal(14, 3)
+  reorderPoint        Decimal  @default(0) @db.Decimal(14, 3)
+  criticalThreshold   Decimal  @default(0) @db.Decimal(14, 3)
+  maxCapacity         Decimal  @default(0) @db.Decimal(14, 3)
+  transitStock        Decimal? @db.Decimal(14, 3)
+  transitPO           String?
+  transitETA          DateTime?
+
+  expiryDate          DateTime?
+  batchLot            String?
+
+  unitsSoldToday      Float    @default(0)
+  unitsSoldWeek       Float    @default(0)
+  unitsSoldMonth      Float    @default(0)
+  unitsSoldYear       Float    @default(0)
+  revenueMonth        Decimal  @default(0) @db.Decimal(14, 2)
+  turnoverRate        Float    @default(0)
+  daysIdle            Int      @default(0)
+  tiedCapital         Decimal  @default(0) @db.Decimal(14, 2)
+
+  eslSyncStatus       String   @default("synced")
+  eslChannel          String?
+  imageUrl            String?
+  categoryIcon        String?
+  active              Boolean  @default(true)
+  lastSoldAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  facility            Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  supplier            Supplier @relation(fields: [supplierId], references: [id])
+  saleItems           SaleItem[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  stockMovements      StockMovement[]
+  deadStockAlerts     DeadStockAlert[]
+
+  @@unique([facilityId, sku])
+  @@unique([facilityId, barcode])
+  @@index([facilityId, department])
+  @@index([facilityId, currentStock])
+  @@index([supplierId])
+}
+
+model SaleTransaction {
+  id             String   @id @default(cuid())
+  facilityId     String
+  receiptNumber  String
+  registerId     String
+  cashierName    String
+  customerType   String   @default("Regular")
+  paymentMethod  String
+  subtotal       Decimal  @db.Decimal(14, 2)
+  tax            Decimal  @db.Decimal(14, 2)
+  total          Decimal  @db.Decimal(14, 2)
+  totalMargin    Decimal  @db.Decimal(14, 2)
+  status         String   @default("Completed")
+  idempotencyKey String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  facility       Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  items          SaleItem[]
+
+  @@unique([facilityId, receiptNumber])
+  @@unique([facilityId, idempotencyKey])
+  @@index([facilityId, createdAt])
+  @@index([facilityId, status])
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  productId   String
+  sku         String
+  name        String
+  unit        String
+  quantity    Decimal  @db.Decimal(14, 3)
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  discount    Float    @default(0)
+  totalPrice  Decimal  @db.Decimal(14, 2)
+  unitCost    Decimal  @db.Decimal(12, 2)
+  marginAmount Decimal @db.Decimal(14, 2)
+
+  sale        SaleTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model PurchaseOrder {
+  id                 String   @id @default(cuid())
+  facilityId         String
+  supplierId         String
+  poNumber           String
+  status             String   @default("Draft")
+  orderDate          DateTime @default(now())
+  expectedDelivery   DateTime
+  receivedDate       DateTime?
+  coldChainVerified  Boolean?
+  temperatureReading String?
+  dockNumber         String?
+  verifiedBy         String?
+  notes              String?
+  totalAmount        Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  facility           Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  supplier           Supplier @relation(fields: [supplierId], references: [id])
+  items              PurchaseOrderItem[]
+
+  @@unique([facilityId, poNumber])
+  @@index([facilityId, status])
+  @@index([supplierId])
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(cuid())
+  purchaseOrderId String
+  productId   String
+  sku         String
+  name        String
+  orderedQty  Decimal       @db.Decimal(14, 3)
+  receivedQty Decimal?      @db.Decimal(14, 3)
+  unitCost    Decimal       @db.Decimal(12, 2)
+  totalCost   Decimal       @db.Decimal(14, 2)
+  unit        String
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  facilityId      String
+  sku             String
+  productName     String
+  actionType      String
+  previousValue   String
+  newValue        String
+  delta           Float?
+  reason          String
+  user            String
+  userId          String?
+  financialImpact Decimal? @db.Decimal(14, 2)
+  createdAt       DateTime @default(now())
+
+  facility        Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, createdAt])
+  @@index([facilityId, actionType])
+}
+
+model DeadStockAlert {
+  id                 String   @id @default(cuid())
+  facilityId         String
+  productId          String
+  sku                String
+  productName        String
+  department         String
+  shelfLocation      String
+  daysIdle           Int
+  stock              Decimal  @db.Decimal(14, 3)
+  unit               String
+  tiedCapital        Decimal  @db.Decimal(14, 2)
+  recommendedAction  String
+  actionType         String
+  createdAt          DateTime @default(now())
+
+  facility           Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  product            Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+}
+
+model DemandForecast {
+  id               String   @id @default(cuid())
+  facilityId       String
+  title            String
+  tag              String
+  changePercentage String
+  isPositive       Boolean  @default(true)
+  description      String
+  supplierLead     String
+  actionText       String
+  actionType       String
+  telemetryNote    String?
+  createdAt        DateTime @default(now())
+
+  facility         Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+}
+
+model StockMovement {
+  id         String   @id @default(cuid())
+  facilityId String
+  productId  String
+  quantity   Decimal  @db.Decimal(14, 3)
+  reason     String
+  reference  String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, createdAt])
+  @@index([productId])
+}

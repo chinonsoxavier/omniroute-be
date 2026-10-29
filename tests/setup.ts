@@ -1,0 +1,9 @@
+process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'silent';
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'test-secret-key-that-is-long-enough-1234567890';
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL ?? 'postgresql://omnistock:omnistock@localhost:5432/omnistock?schema=public';
+process.env.REDIS_ENABLED = 'false';
+process.env.API_PREFIX = '/api/v1';
+process.env.RATE_LIMIT_MAX = '100000';
+process.env.AUTH_RATE_LIMIT_MAX = '100000';
